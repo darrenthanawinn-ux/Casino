@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NEON NOIR // Midnight Casino</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+:root{--cyan:#18f0ff;--pink:#ff2aa8;--gold:#ffd35a;--ink:#05060b}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#03040a;color:#d9faff;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+body{image-rendering:pixelated}
+#wrap{position:relative;width:100%;height:100%;display:grid;place-items:center;background:radial-gradient(circle,#101323 0,#03040a 70%)}
+canvas{width:min(100vw,1600px);height:min(100vh,900px);max-width:100%;max-height:100%;image-rendering:pixelated;image-rendering:crisp-edges;box-shadow:0 0 60px #000,0 0 22px #08e9ff33}
+.overlay{position:absolute;inset:0;pointer-events:none}
+#hud{position:absolute;left:18px;top:14px;right:18px;display:flex;justify-content:space-between;align-items:flex-start;gap:12px;pointer-events:none;text-shadow:2px 2px #000}
+.panel{background:#070a12e8;border:2px solid #18f0ff77;box-shadow:0 0 18px #00eaff22,inset 0 0 12px #ff2aa811;padding:10px 12px}
+#toast{position:absolute;left:50%;top:12%;transform:translateX(-50%);padding:10px 18px;background:#080a12ee;border:2px solid var(--gold);color:#fff2a9;box-shadow:0 0 25px #ffd35a44;opacity:0;transition:opacity .18s;pointer-events:none;white-space:nowrap}
+#dialogue,#modal{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#0008;pointer-events:auto}
+.box{width:min(760px,92vw);background:#070912f5;border:3px solid var(--cyan);box-shadow:0 0 35px #00eaff44;padding:18px;position:relative}
+.box h2{margin:0 0 8px;color:var(--gold);font-size:22px}
+.box p{line-height:1.65;min-height:76px;margin:8px 0 16px}
+.choice{display:block;width:100%;text-align:left;margin:7px 0;padding:10px;border:1px solid #18f0ff55;background:#0c1220;color:#c9fbff;cursor:pointer}
+.choice:hover{background:#12263a;border-color:#18f0ff}
+#minigame{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:#02030ae8;pointer-events:auto}
+.gamebox{width:min(760px,94vw);max-height:90vh;overflow:auto;background:#070912;border:3px solid var(--pink);box-shadow:0 0 45px #ff2aa833;padding:18px}
+.bigbtn{padding:10px 18px;background:#111b2a;border:2px solid #18f0ff;color:#fff;cursor:pointer;font-weight:800}
+.bigbtn:hover{background:#1b2d40}
+.bigbtn:disabled{opacity:.35;cursor:not-allowed}
+.cards{display:flex;gap:10px;flex-wrap:wrap;min-height:105px}
+.card{width:64px;height:88px;background:#eee;color:#111;border:3px solid #fff;display:grid;place-items:center;font-size:20px;font-weight:900;box-shadow:3px 3px #000}
+.card.red{color:#c71954}.card.back{background:#141a2b;color:#18f0ff;border-color:#18f0ff}
+.slotrow{display:flex;justify-content:center;gap:12px;margin:18px 0}
+.reel{width:120px;height:120px;background:#101522;border:4px solid #ffd35a;display:grid;place-items:center;font-size:48px;box-shadow:inset 0 0 20px #000,0 0 15px #ffd35a44}
+#scan{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(to bottom,transparent 0,transparent 3px,#18f0ff0d 4px);mix-blend-mode:screen}
+#vignette{position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle,transparent 48%,#0008 100%)}
+kbd{border:1px solid #ffffff55;padding:2px 6px;background:#111827}
+.small{font-size:12px;color:#8ea8b8}
+</style>
+</head>
+<body>
+<div id="wrap">
+<canvas id="game" width="960" height="540"></canvas>
+<div id="hud">
+  <div class="panel"><b style="color:#18f0ff">NEON NOIR</b><div class="small" id="zone">RAIN DISTRICT // OUTSIDE</div></div>
+  <div class="panel"><span style="color:#ffd35a">¢</span> <b id="wallet">250</b> &nbsp; <span id="upgradeText">LUCK x1.00 · SPD 1.00</span></div>
+</div>
+<div id="toast"></div><div id="scan"></div><div id="vignette"></div>
+
+<div id="dialogue"><div class="box">
+  <div class="small" id="dialogueName"></div><h2 id="dialogueTitle"></h2>
+  <p id="dialogueText"></p><div id="choices"></div>
+  <div class="small">[E] continue · [ESC] close</div>
+</div></div>
+
+<div id="minigame"><div class="gamebox" id="miniContent"></div></div>
+
+<div id="modal"><div class="box">
+  <h2>PAUSED // SYSTEM</h2>
+  <div class="small">Changes save locally in your browser.</div>
+  <label style="display:block;margin:18px 0">MASTER VOLUME <input id="volume" type="range" min="0" max="1" step=".01"></label>
+  <label style="display:block;margin:18px 0"><input id="crt" type="checkbox"> CRT scanlines</label>
+  <label style="display:block;margin:18px 0"><input id="particles" type="checkbox"> Rain / particles</label>
+  <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <button class="bigbtn" id="saveBtn">SAVE NOW</button>
+    <button class="bigbtn" id="resetBtn">RESET SAVE</button>
+    <button class="bigbtn" id="resumeBtn">RESUME</button>
+  </div>
+</div></div>
+</div>
+
+<script>
+"use strict";
+
+/* ========================= CORE ========================= */
+const C=document.getElementById("game"),ctx=C.getContext("2d");
+const W=C.width,H=C.height;
+ctx.imageSmoothingEnabled=false;
+const TAU=Math.PI*2;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const rand=(a,b)=>Math.random()*(b-a)+a;
+const pick=a=>a[(Math.random()*a.length)|0];
+const keys=new Set();
+let state={
+  zone:"street", wallet:250, luck:1, speed:1, vip:false,
+  crt:true, particles:true, volume:.55, muted:false
+};
+let paused=false, shake=0, toastTimer=0, dialogue=null, mini=null, transition=0;
+let audio=null;
+
+/* ========================= SAVE ========================= */
+function save(){
+  localStorage.setItem("neonNoirSave",JSON.stringify(state));
+  showToast("SAVE COMMITTED // LOCAL");
+}
+function load(){
+  try{const x=JSON.parse(localStorage.getItem("neonNoirSave")); if(x) state={...state,...x};}catch(e){}
+}
+function resetSave(){
+  localStorage.removeItem("neonNoirSave");
+  state={zone:"street",wallet:250,luck:1,speed:1,vip:false,crt:true,particles:true,volume:.55,muted:false};
+  syncSettings(); showToast("SAVE RESET");
+}
+load();
+
+/* ========================= AUDIO ========================= */
+function initAudio(){
+  if(audio)return;
+  const AC=window.AudioContext||window.webkitAudioContext;
+  if(!AC)return;
+  const ac=new AC(), master=ac.createGain(); master.gain.value=state.volume; master.connect(ac.destination);
+  audio={ac,master,ambient:null};
+  const osc=ac.createOscillator(), gain=ac.createGain();
+  osc.type="sine"; osc.frequency.value=54; gain.gain.value=.018; osc.connect(gain).connect(master); osc.start();
+  audio.ambient={osc,gain};
+}
+function tone(freq=440,dur=.08,type="square",vol=.06,slide=0){
+  if(!audio||state.muted)return;
+  const ac=audio.ac,o=ac.createOscillator(),g=ac.createGain();
+  o.type=type;o.frequency.value=freq;o.frequency.linearRampToValueAtTime(Math.max(20,freq+slide),ac.currentTime+dur);
+  g.gain.setValueAtTime(vol*state.volume,ac.currentTime);
+  g.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+dur);
+  o.connect(g).connect(audio.master);o.start();o.stop(ac.currentTime+dur+.02);
+}
+function sfx(name){
+  initAudio();
+  if(!audio)return;
+  if(name==="coin"){tone(920,.05,"square",.07,300);tone(1320,.09,"square",.045,500)}
+  if(name==="spin"){tone(90,.12,"sawtooth",.035,80);tone(130,.16,"sawtooth",.02,-50)}
+  if(name==="win"){tone(520,.12,"triangle",.08,160);setTimeout(()=>tone(780,.15,"triangle",.08,220),80);setTimeout(()=>tone(1040,.2,"triangle",.09,300),160)}
+  if(name==="lose"){tone(160,.22,"square",.045,-70)}
+  if(name==="step")tone(75,.025,"square",.018);
+  if(name==="click")tone(330,.035,"square",.035,30);
+}
+
+/* ========================= WORLD ========================= */
+const player={x:210,y:430,w:20,h:28,dir:"up",frame:0,anim:0};
+const camera={x:0,y:0};
+const street={w:1800,h:900};
+const casino={w:1400,h:900};
+
+const npcs=[
+ {id:"salty",zone:"street",x:540,y:420,name:"SALTY SAM",title:"Street Drifter",color:"#7c8b96",accent:"#ffb347",personality:"He knows everyone and owes everyone.",seed:2},
+ {id:"rain",zone:"street",x:760,y:300,name:"IRIS",title:"Neon Courier",color:"#e85d9e",accent:"#20e8ff",personality:"Always late. Never lost.",seed:7},
+ {id:"vince",zone:"casino",x:760,y:360,name:"VINCE \"THE COUNT\"",title:"Card Shark",color:"#18283d",accent:"#ffd35a",personality:"He counts probabilities instead of cards.",seed:11},
+ {id:"rex",zone:"casino",x:1180,y:340,name:"BOUNCER REX",title:"VIP Gatekeeper",color:"#4a2c3b",accent:"#ff2aa8",personality:"A wall with a pulse.",seed:19},
+ {id:"maeve",zone:"casino",x:360,y:300,name:"MAEVE",title:"The Broken Regular",color:"#1d3942",accent:"#18f0ff",personality:"She trusts machines less than people.",seed:23},
+ {id:"ludo",zone:"casino",x:970,y:620,name:"LUDO",title:"Floor Walker",color:"#293d24",accent:"#b5ff63",personality:"Trades gossip for snacks.",seed:31},
+ {id:"sable",zone:"casino",x:580,y:690,name:"SABLE",title:"House Singer",color:"#4b1e42",accent:"#ff7bd6",personality:"Knows the casino's oldest song.",seed:37}
+];
+// Named NPCs are autonomous actors. The player never controls their movement.
+for(const n of npcs){
+  n.tx=n.x; n.ty=n.y; n.moveTimer=rand(.2,1.8); n.pauseTimer=rand(0,1.2);
+  n.roamRadius=n.zone==='street'?rand(130,240):rand(110,220);
+  n.homeX=n.x; n.homeY=n.y; n.dir='down'; n.frame=0; n.anim=0;
+}
+
+
+function isCasino(){return state.zone==="casino"}
+function world(){return isCasino()?casino:street}
+function enterCasino(){transition=1;setTimeout(()=>{state.zone="casino";player.x=160;player.y=650;player.dir="right";showToast("WELCOME TO THE VELVET CIRCUIT");save();},280)}
+function leaveCasino(){transition=1;setTimeout(()=>{state.zone="street";player.x=1510;player.y=690;player.dir="left";showToast("RAIN DISTRICT // 02:13 AM");save();},280)}
+
+function drawBackground(t){
+  ctx.fillStyle=isCasino()?"#090a13":"#050710";ctx.fillRect(0,0,W,H);
+  if(isCasino())drawCasino(t);else drawStreet(t);
+}
+function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(x,y,w,h)}
+function neonText(txt,x,y,size,color,align="left"){
+  ctx.font=`bold ${size}px monospace`;ctx.textAlign=align;ctx.fillStyle=color;ctx.shadowColor=color;ctx.shadowBlur=8;ctx.fillText(txt,x,y);ctx.shadowBlur=0;
+}
+function gridFloor(x,y,w,h){
+  rect(x,y,w,h,"#11121b");
+  for(let i=0;i<w;i+=32)rect(x+i,y,1,h,"#202233");
+  for(let j=0;j<h;j+=32)rect(x,y+j,w,1,"#202233");
+}
+function drawStreet(t){
+  // distant buildings
+  for(let i=0;i<28;i++){
+    const bx=i*72-(camera.x*.25%72), bh=130+(i*47%240);
+    rect(bx,-10,64,bh,"#0b1020");
+    for(let yy=30;yy<bh-10;yy+=24)for(let xx=8;xx<58;xx+=17)
+      if((i*7+yy+xx)%4!==0)rect(bx+xx,yy,6,9,(i+yy)%3?"#1a3340":"#4b1f4d");
+  }
+  rect(0,300,W,240,"#070912");
+  // wet street
+  for(let y=340;y<H;y+=18)rect(0,y,W,1,"#151a27");
+  for(let x=-100;x<W+100;x+=95)rect(x,380+(x%55),55,2,"#173e49");
+  // casino facade
+  const bx=120-camera.x, by=70;
+  rect(bx,by,690,310,"#090b12");rect(bx+18,by+22,654,18,"#151928");
+  rect(bx+40,by+65,610,180,"#111421");
+  neonText("V E L V E T",bx+345,by+132,44,"#ff2aa8","center");
+  neonText("CIRCUIT",bx+345,by+182,38,"#18f0ff","center");
+  rect(bx+250,by+215,190,165,"#111a25");
+  rect(bx+280,by+250,130,130,"#06070c");
+  neonText("ENTER",bx+345,by+305,22,"#ffd35a","center");
+  // side neon
+  for(let i=0;i<5;i++){rect(bx+30+i*124,by+45,82,4,i%2?"#18f0ff":"#ff2aa8")}
+  // door interaction glow
+  if(dist(player.x,player.y,465,365)<100){neonText("E  ENTER CASINO",465-camera.x,325-camera.y,14,"#ffd35a","center")}
+  // lamps
+  for(let x=80;x<1800;x+=180){rect(x-camera.x,260,4,80,"#27202e");rect(x-camera.x-8,245,20,12,"#ff2aa8");}
+  drawRain(t);
+}
+function drawCasino(t){
+  gridFloor(0,0,W,H);
+  // walls / pillars
+  rect(0,0,W,54,"#0a0b12");rect(0,0,12,H,"#0a0b12");rect(W-12,0,12,H,"#0a0b12");
+  for(let x=80;x<W;x+=160){rect(x,55,8,130,"#252037");rect(x-8,55,24,5,"#ff2aa844")}
+  neonText("THE VELVET CIRCUIT",W/2,32,20,"#ff2aa8","center");
+  // cashier
+  rect(55,600,240,150,"#161422");rect(55,580,240,24,"#ffd35a");neonText("CASHIER",175,620,17,"#ffd35a","center");
+  rect(80,635,190,75,"#0a1019");rect(100,650,150,18,"#18f0ff44");
+  // slots
+  for(let r=0;r<2;r++)for(let i=0;i<5;i++)drawSlot(320+i*95,100+r*145,(t+i+r)%2);
+  // blackjack table
+  ctx.beginPath();ctx.ellipse(790,225,185,105,0,0,TAU);ctx.fillStyle="#18382e";ctx.fill();ctx.strokeStyle="#ffd35a";ctx.lineWidth=5;ctx.stroke();
+  neonText("21 VELVET",790,235,22,"#ffd35a","center");
+  // roulette
+  ctx.beginPath();ctx.arc(1060,540,105,0,TAU);ctx.fillStyle="#151824";ctx.fill();ctx.strokeStyle="#ff2aa8";ctx.lineWidth=4;ctx.stroke();
+  ctx.beginPath();ctx.arc(1060,540,65,0,TAU);ctx.strokeStyle="#ffd35a";ctx.stroke();
+  neonText("ROULETTE",1060,545,16,"#ff2aa8","center");
+  // VIP
+  rect(1090,90,210,125,"#11131d");rect(1100,100,190,9,"#ff2aa8");neonText("VIP // MEMBERS",1195,150,17,"#ff2aa8","center");
+  if(!state.vip)neonText("REX CHECKS",1195,181,11,"#a7a7b7","center");
+  // bar
+  rect(390,780,520,48,"#111520");rect(400,770,500,12,"#18f0ff33");neonText("NOIR LOUNGE  •  LIVE",650,811,13,"#8ca9b3","center");
+}
+function drawSlot(x,y,alt){rect(x,y,70,112,"#17121e");rect(x+7,y+7,56,75,"#05060b");rect(x+13,y+86,44,10,alt?"#ff2aa8":"#18f0ff");}
+function drawRain(t){
+  if(!state.particles)return;
+  for(let i=0;i<85;i++){
+    let x=(i*97+t*300)%W,y=(i*53+t*650)%H;
+    ctx.strokeStyle=i%3?"#8defff33":"#ff2aa844";ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x-5,y+16);ctx.stroke();
+  }
+}
+
+/* ========================= SPRITES ========================= */
+function sprite(ch,x,y,dir,frame,scale=1){
+  const s=scale, bob=(frame%2)*1;
+  ctx.save();ctx.translate(x,y+bob);
+  // shadow
+  ctx.fillStyle="#0008";ctx.fillRect(-11*s,17*s,22*s,5*s);
+  // unique palette
+  const skin=ch.skin||"#d9a77b",hair=ch.hair||"#181827",shirt=ch.color||"#263449",accent=ch.accent||"#18f0ff";
+  // legs
+  rect(-8*s,8*s,6*s,12*s,"#11131c");rect(2*s,8*s,6*s,12*s,"#11131c");
+  // torso
+  rect(-9*s,-8*s,18*s,19*s,shirt);rect(-9*s,-2*s,18*s,3*s,accent);
+  // head
+  rect(-8*s,-23*s,16*s,14*s,skin);
+  // hair / hat
+  rect(-9*s,-25*s,18*s,5*s,hair);rect(-6*s,-29*s,12*s,4*s,hair);
+  // face pixels
+  const eyeY=-17*s;
+  if(dir==="left"){rect(-6*s,eyeY,2*s,2*s,"#fff");}
+  else if(dir==="right"){rect(4*s,eyeY,2*s,2*s,"#fff");}
+  else {rect(-5*s,eyeY,3*s,2*s,"#fff");rect(3*s,eyeY,3*s,2*s,"#fff");}
+  // arms swing
+  const a=(frame%4<2?1:-1)*4*s;
+  if(dir==="left"||dir==="right"){rect(-13*s,-5*s,5*s,9*s,"#b97e60");rect(8*s,-5*s,5*s,9*s,"#b97e60")}
+  else {rect(-13*s,-4*s,5*s,8*s,"#b97e60");rect(8*s,-4*s,5*s,8*s,"#b97e60")}
+  ctx.restore();
+}
+function makeNPC(n){
+  return {...n,skin:pick(["#d9a77b","#8e5f45","#c789a1","#b8a27c","#e2c3a0"]),hair:pick(["#161725","#3a1b3d","#d8c04e","#174452","#5d252c"])};
+}
+npcs.forEach((n,i)=>Object.assign(n,makeNPC(n)));
+
+function drawActors(){
+  for(const n of npcs){
+    if(n.zone!==state.zone) continue;
+    sprite(n,n.x,n.y,n.dir,n.frame,1.15);
+  }
+  sprite({color:"#31465a",accent:"#18f0ff",skin:"#d6a27a",hair:"#111521"},player.x,player.y,player.dir,player.frame,1.25);
+}
+
+function updateNPCs(dt){
+  // Every named NPC chooses destinations independently and walks there automatically.
+  for(const n of npcs){
+    if(n.zone!==state.zone) continue;
+    if(n.pauseTimer>0){ n.pauseTimer-=dt; n.frame=0; continue; }
+    n.moveTimer-=dt;
+    if(n.moveTimer<=0){
+      const angle=Math.random()*TAU, radius=rand(25,n.roamRadius);
+      n.tx=clamp(n.homeX+Math.cos(angle)*radius,40,world().w-40);
+      n.ty=clamp(n.homeY+Math.sin(angle)*radius,90,world().h-50);
+      n.moveTimer=rand(2.0,4.5);
+    }
+    const dx=n.tx-n.x,dy=n.ty-n.y,d=Math.hypot(dx,dy);
+    if(d<3){ n.pauseTimer=rand(.4,1.8); n.frame=0; continue; }
+    const speed=n.id==='rex'?28:rand(30,48);
+    n.x+=dx/d*speed*dt; n.y+=dy/d*speed*dt;
+    if(Math.abs(dx)>Math.abs(dy)) n.dir=dx<0?'left':'right';
+    else n.dir=dy<0?'up':'down';
+    n.anim+=dt*7; n.frame=Math.floor(n.anim)%4;
+  }
+}
+
+/* ========================= PARTICLES / FX ========================= */
+const particles=[];
+function burst(x,y,color="#ffd35a",n=18){
+  for(let i=0;i<n;i++)particles.push({x,y,vx:rand(-2.5,2.5),vy:rand(-3.5,0),life:1,c:color,s:rand(1,3)});
+}
+const floats=[];
+function floatText(txt,x,y,color="#ffd35a"){
+  floats.push({txt,x,y,life:1,c:color});
+}
+function updateFX(dt){
+  for(let p of particles){p.x+=p.vx;p.y+=p.vy;p.vy+=.08;p.life-=dt*1.7}
+  while(particles.length&&particles[0].life<=0)particles.shift();
+  for(let f of floats){f.y-=25*dt;f.life-=dt}
+  while(floats.length&&floats[0].life<=0)floats.shift();
+  shake*=Math.pow(.05,dt);
+}
+function drawFX(){
+  for(const p of particles){ctx.globalAlpha=Math.max(0,p.life);rect(p.x-camera.x,p.y-camera.y,p.s,p.s,p.c)}
+  ctx.globalAlpha=1;
+  for(const f of floats){ctx.globalAlpha=f.life;neonText(f.txt,f.x-camera.x,f.y-camera.y,16,f.c,"center")}
+  ctx.globalAlpha=1;
+}
+
+/* ========================= INPUT / MOVEMENT ========================= */
+const movementKeys=new Set(['w','a','s','d']);
+const actionKeys=new Set(['e','escape']);
+
+window.addEventListener('keydown',e=>{
+  const key=e.key.toLowerCase();
+  if(movementKeys.has(key)||key===' '){ e.preventDefault(); }
+  initAudio();
+  if(key==='escape'){
+    e.preventDefault();
+    if(document.getElementById('modal').style.display==='flex') closePause();
+    else if(document.getElementById('minigame').style.display==='flex') closeMini();
+    else if(document.getElementById('dialogue').style.display==='flex') closeDialogue();
+    else openPause();
+    return;
+  }
+  // E is an edge-triggered action key. It is NEVER inserted into the movement set.
+  if(key==='e' && !e.repeat){
+    e.preventDefault();
+    if(dialogue){ advanceDialogue(); return; }
+    if(!paused && !mini) interact();
+    return;
+  }
+  if(movementKeys.has(key)) keys.add(key);
+});
+window.addEventListener('keyup',e=>{
+  const key=e.key.toLowerCase();
+  if(movementKeys.has(key)) keys.delete(key);
+});
+window.addEventListener('blur',()=>keys.clear());
+C.addEventListener('pointerdown',e=>{
+  initAudio();
+  if(paused)return;
+  const r=C.getBoundingClientRect();
+  const sx=C.width/r.width,sy=C.height/r.height;
+  clickWorld((e.clientX-r.left)*sx,(e.clientY-r.top)*sy);
+});
+
+function updatePlayer(dt){
+  if(paused||dialogue||mini||transition)return;
+  // Explicit mapping: W=up, A=left, S=down, D=right.
+  let dx=(keys.has('d')?1:0)-(keys.has('a')?1:0);
+  let dy=(keys.has('s')?1:0)-(keys.has('w')?1:0);
+  dx=clamp(dx,-1,1); dy=clamp(dy,-1,1);
+  if(dx||dy){
+    const l=Math.hypot(dx,dy)||1; dx/=l; dy/=l;
+    const sp=125*state.speed;
+    player.x+=dx*sp*dt; player.y+=dy*sp*dt;
+    if(Math.abs(dx)>Math.abs(dy)) player.dir=dx<0?'left':'right';
+    else player.dir=dy<0?'up':'down';
+    player.anim+=dt*12; player.frame=Math.floor(player.anim)%4;
+  }else{
+    player.frame=0;
+  }
+  const z=world();
+  player.x=clamp(player.x,30,z.w-30); player.y=clamp(player.y,80,z.h-30);
+  camera.x=clamp(player.x-W/2,0,z.w-W); camera.y=clamp(player.y-H/2,0,z.h-H);
+}
+
+function dist(a,b,c,d){return Math.hypot(a-c,b-d)}
+function nearNPC(){
+  let best=null,bd=Infinity;
+  for(const n of npcs)if(n.zone===state.zone){const d=dist(player.x,player.y,n.x,n.y);if(d<90&&d<bd){best=n;bd=d}}
+  return best;
+}
+function interact(){
+  // Street entrance has priority so a nearby NPC cannot steal the interaction.
+  if(!isCasino() && dist(player.x,player.y,465,365)<105){ enterCasino(); return; }
+  const n=nearNPC();
+  if(n){openDialogue(n);return;}
+  if(isCasino()){
+    if(dist(player.x,player.y,620,330)<125){openSlots();return;}
+    if(dist(player.x,player.y,790,225)<155){openBlackjack();return;}
+    if(player.x>40&&player.x<310&&player.y>550&&player.y<790){openShop();return;}
+    if(player.x>1080&&player.y<240){if(state.vip)showToast("VIP ROOM // SOON");else showToast("REX SAYS: COME BACK WITH A VIP CARD");return;}
+    // Exit doorway back to the street.
+    if(player.x<190&&player.y>570&&player.y<820){leaveCasino();return;}
+  }
+}
+function clickWorld(x,y){
+  const wx=x+camera.x,wy=y+camera.y;
+  if(!isCasino())return;
+  if(dist(wx,wy,620,330)<110)openSlots();
+  else if(dist(wx,wy,790,225)<150)openBlackjack();
+  else if(wx>55&&wx<300&&wy>570&&wy<760)openShop();
+  else {
+    const n=npcs.find(n=>n.zone==="casino"&&dist(wx,wy,n.x,n.y)<65);
+    if(n)openDialogue(n);
+  }
+}
+
+/* ========================= DIALOGUE ========================= */
+const lines={
+ salty:[
+  ["SALTY SAM","Rain makes honest people nervous. You can hear every lie hit the pavement.","What do you know about this place?"],
+  ["SALTY SAM","The Velvet Circuit used to be a bank. The vault is still underneath the casino.","Who owns it now?"],
+  ["SALTY SAM","Nobody knows. The official owner is three shell companies wearing one expensive suit.","And you?"],
+  ["SALTY SAM","Me? I collect stories, loose change, and reasons not to go indoors.","Stay dry, Sam."],
+ ],
+ iris:[
+  ["IRIS","You look new. New people always stare at the neon like it owes them an answer.","You work for the casino?"],
+  ["IRIS","Courier. I move envelopes, chips, secrets. Never ask what's inside.","What's the fastest way inside?"],
+  ["IRIS","Front doors. Always the front doors. Cameras hate complicated entrances.","You seem like you know the city."],
+  ["IRIS","I know which alleys flood first. That's basically knowing the city.","Good luck, Iris."],
+ ],
+ vince:[
+  ["VINCE \"THE COUNT\"","Blackjack is simple math wearing a velvet jacket. The table wants you emotional.","What's your rule?"],
+  ["VINCE \"THE COUNT\"","Never chase a loss. A bad hand doesn't become good because you are angry about it.","What about the dealer?"],
+  ["VINCE \"THE COUNT\"","Watch the up-card. A weak dealer card changes the entire decision tree.","You really count everything?"],
+  ["VINCE \"THE COUNT\"","I count exits, tells, footsteps and probabilities. Cards are the easy part.","I'll remember that."],
+ ],
+ rex:[
+  ["BOUNCER REX","VIP doors don't open for confidence. They open for credentials.","How do I get VIP?"],
+  ["BOUNCER REX","Cashier sells the card. Five hundred credits. No favors, no sob stories.","And if I don't have five hundred?"],
+  ["BOUNCER REX","Then you play the floor, make smart bets, and stop trying to intimidate the door.","You always this friendly?"],
+  ["BOUNCER REX","This is my friendly face. You should see the other one.","Fair enough."],
+ ],
+ maeve:[
+  ["MAEVE","Hear that? Reel clicks. Every click is a promise the machine won't keep.","Why keep playing?"],
+  ["MAEVE","Because sometimes a broken promise pays rent. Sometimes it buys dinner.","You think they're rigged?"],
+  ["MAEVE","Rigged is a big word. I prefer \"designed to make you forget time.\"", "How long have you been here?"],
+  ["MAEVE","Long enough to remember when these walls were painted white. Don't trust anything painted white.","I'll remember that."],
+ ],
+ ludo:[
+  ["LUDO","I know who won before the scoreboard does. Floor walkers see everything.","Any useful gossip?"],
+  ["LUDO","Cashier's upgrades are permanent. Lose a bet, don't lose your speed.","Who tips the best?"],
+  ["LUDO","Blackjack regulars tip badly. Slot winners tip like royalty for exactly thirty seconds.","And you?"],
+  ["LUDO","I trade gossip for snacks. It's a balanced economy.","Deal."],
+ ],
+ sable:[
+  ["SABLE","The neon hum is in B-flat. Nobody here notices anymore.","What's the oldest song?"],
+  ["SABLE","One note. Three doors. A city that never sleeps.","That sounds ominous."],
+  ["SABLE","It is. But ominous songs have the best endings.","Do you ever leave?"],
+  ["SABLE","After the last light shuts off. Until then, this place needs a soundtrack.","Keep playing."],
+ ]
+};
+function openDialogue(n){
+  dialogue={n,step:0,typing:false,typeTimer:null};
+  document.getElementById("dialogue").style.display="flex";
+  renderDialogue();
+}
+function getDialogueTree(n){
+  // Every named NPC has an explicit, unique tree. No generic fallback is used.
+  return lines[n.id] || [[n.name,"The neon hums around them, but they have nothing to say right now.","Leave."]];
+}
+function renderDialogue(){
+  if(!dialogue)return;
+  const d=dialogue,arr=getDialogueTree(d.n),item=arr[Math.min(d.step,arr.length-1)];
+  document.getElementById("dialogueName").textContent=`${d.n.name}  //  ${d.n.title}`;
+  document.getElementById("dialogueTitle").textContent=item[0];
+  typeText(document.getElementById("dialogueText"),item[1]);
+  const ch=document.getElementById("choices");ch.innerHTML="";
+  const b=document.createElement("button");b.className="choice";
+  b.textContent=d.step<arr.length-1?`› ${item[2]}`:"› End conversation";
+  b.onclick=()=>{sfx("click");advanceDialogue()};
+  ch.appendChild(b);
+}
+function advanceDialogue(){
+  if(!dialogue)return;
+  if(dialogue.typing){
+    clearInterval(dialogue.typeTimer);dialogue.typing=false;
+    const item=getDialogueTree(dialogue.n)[Math.min(dialogue.step,getDialogueTree(dialogue.n).length-1)];
+    document.getElementById("dialogueText").textContent=item[1];
+    return;
+  }
+  const arr=getDialogueTree(dialogue.n);
+  if(dialogue.step<arr.length-1){dialogue.step++;renderDialogue();}
+  else closeDialogue();
+}
+function typeText(el,text){
+  if(dialogue&&dialogue.typeTimer)clearInterval(dialogue.typeTimer);
+  el.textContent="";let i=0;
+  if(dialogue){dialogue.typing=true;dialogue.typeTimer=setInterval(()=>{
+    el.textContent=text.slice(0,++i);
+    if(i>=text.length){clearInterval(dialogue.typeTimer);dialogue.typeTimer=null;dialogue.typing=false;}
+  },12);}
+}
+function closeDialogue(){
+  if(dialogue&&dialogue.typeTimer)clearInterval(dialogue.typeTimer);
+  document.getElementById("dialogue").style.display="none";
+  dialogue=null;
+}
+
+/* ========================= SLOTS ========================= */
+const symbols=[{s:"🍒",v:2},{s:"🔔",v:4},{s:"♦",v:8},{s:"7",v:20}];
+let slotBusy=false;
+function openSlots(){
+  if(slotBusy)return;
+  mini={type:"slots"};document.getElementById("minigame").style.display="flex";
+  renderSlots(["🍒","🔔","♦"]);
+}
+function renderSlots(vals=["🍒","🔔","♦"],msg="BET 10 CREDITS"){
+  document.getElementById("miniContent").innerHTML=`
+  <div class="small">NEON LUCK // SLOT MACHINE</div><h2 style="color:#ff2aa8">NEON LUCK</h2>
+  <div class="slotrow">${vals.map(v=>`<div class="reel">${v}</div>`).join("")}</div>
+  <div style="text-align:center;color:#9eb0bd;margin:8px">${msg}</div>
+  <div style="display:flex;justify-content:center;gap:10px"><button class="bigbtn" id="spinBtn">SPIN — 10¢</button><button class="bigbtn" id="closeMini">LEAVE</button></div>
+  <div class="small" style="margin-top:15px;text-align:center">🍒 2× · 🔔 4× · ♦ 8× · 7 20× · triple jackpot adds luck multiplier</div>`;
+  document.getElementById("spinBtn").onclick=spinSlots;
+  document.getElementById("closeMini").onclick=closeMini;
+}
+function spinSlots(){
+  if(slotBusy)return;
+  if(state.wallet<10){showToast("NOT ENOUGH CREDITS");sfx("lose");return}
+  slotBusy=true;state.wallet-=10;syncHUD();sfx("spin");
+  let ticks=0;
+  const timer=setInterval(()=>{
+    ticks++;
+    const vals=[pick(symbols).s,pick(symbols).s,pick(symbols).s];renderSlots(vals,"REELS SPINNING…");
+    if(ticks>=13){
+      clearInterval(timer);
+      const r=rollSlots();
+      renderSlots(r.values,r.msg);state.wallet+=r.payout;syncHUD();
+      if(r.payout>0){burst(480,300,"#ffd35a",32);floatText("+"+r.payout+"¢",player.x,player.y-30);sfx("win");shake=9}else sfx("lose");
+      slotBusy=false;
+    }
+  },70);
+}
+function rollSlots(){
+  const vals=[pick(symbols).s,pick(symbols).s,pick(symbols).s];
+  let payout=0,msg="NO MATCH // HOUSE KEEPS THE 10¢";
+  if(vals[0]===vals[1]&&vals[1]===vals[2]){
+    const sym=symbols.find(x=>x.s===vals[0]);payout=Math.round(10*sym.v*state.luck);
+    msg=`TRIPLE ${vals[0]} // +${payout}¢`;
+  }else if(vals[0]===vals[1]||vals[1]===vals[2]||vals[0]===vals[2]){
+    payout=Math.round(10*1.5*state.luck);msg=`PAIR // +${payout}¢`;
+  }
+  return {values:vals,payout,msg};
+}
+
+/* ========================= BLACKJACK ========================= */
+let bj=null;
+const suits=["♠","♥","♦","♣"], ranks=["A","2","3","4","5","6","7","8","9","10","J","Q","K"];
+function deck(){let a=[];for(const s of suits)for(const r of ranks)a.push({r,s});return a.sort(()=>Math.random()-.5)}
+function val(cards){let n=0,a=0;for(const c of cards){n+=c.r==="A"?11:["K","Q","J"].includes(c.r)?10:+c.r;if(c.r==="A")a++}while(n>21&&a--)n-=10;return n}
+function cardHTML(c,back=false){if(back)return `<div class="card back">✦</div>`;return `<div class="card ${["♥","♦"].includes(c.s)?"red":""}">${c.r}${c.s}</div>`}
+function openBlackjack(){
+  if(!state.vip){ /* normal table */
+  }
+  if(bj&&bj.active)return;
+  mini={type:"bj"};document.getElementById("minigame").style.display="flex";
+  bj={deck:deck(),player:[],dealer:[],bet:20,active:true,over:false};
+  bj.player=[bj.deck.pop(),bj.deck.pop()];bj.dealer=[bj.deck.pop(),bj.deck.pop()];
+  renderBJ();
+}
+function renderBJ(msg=""){
+  const pv=val(bj.player),dv=val(bj.dealer);
+  document.getElementById("miniContent").innerHTML=`
+  <div class="small">21 VELVET // BLACKJACK TABLE</div><h2 style="color:#ffd35a">DEALER ${bj.over?dv:"?"}</h2>
+  <div class="cards">${bj.dealer.map((c,i)=>cardHTML(c,!bj.over&&i===1)).join("")}</div>
+  <h2>YOU ${pv}</h2><div class="cards">${bj.player.map(c=>cardHTML(c)).join("")}</div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:15px">
+  <span>BET: <b>${bj.bet}¢</b></span>
+  ${!bj.over?`<button class="bigbtn" id="hit">HIT</button><button class="bigbtn" id="stand">STAND</button><button class="bigbtn" id="double">DOUBLE</button>`:""}
+  <button class="bigbtn" id="leaveBJ">${bj.over?"CLOSE":"FOLD"}</button></div>
+  <div style="margin-top:12px;color:#ffd35a;min-height:22px">${msg}</div>
+  <div class="small">VIP card unlocks 100¢ high-stakes bets at this table.</div>`;
+  if(!bj.over){
+    document.getElementById("hit").onclick=()=>bjHit();
+    document.getElementById("stand").onclick=()=>bjStand();
+    document.getElementById("double").onclick=()=>bjDouble();
+  }
+  document.getElementById("leaveBJ").onclick=closeMini;
+}
+function bjHit(){
+  bj.player.push(bj.deck.pop());sfx("click");
+  if(val(bj.player)>21){bj.over=true;settleBJ("BUST — HOUSE WINS");}
+  else renderBJ("HIT");
+}
+function bjStand(){
+  while(val(bj.dealer)<17)bj.dealer.push(bj.deck.pop());
+  bj.over=true;
+  const p=val(bj.player),d=val(bj.dealer);
+  if(d>21||p>d){const win=Math.round(bj.bet*2*state.luck);state.wallet+=win;settleBJ(`YOU WIN +${win}¢`);sfx("win");burst(480,280,"#ffd35a",35);shake=7}
+  else if(p===d){state.wallet+=bj.bet;settleBJ("PUSH — BET RETURNED")}
+  else settleBJ("DEALER WINS");syncHUD();
+}
+function bjDouble(){
+  if(state.wallet<bj.bet){showToast("NOT ENOUGH CREDITS TO DOUBLE");return}
+  state.wallet-=bj.bet;bj.bet*=2;bj.player.push(bj.deck.pop());syncHUD();
+  if(val(bj.player)>21){bj.over=true;settleBJ("DOUBLE BUST");}else bjStand();
+}
+function settleBJ(msg){syncHUD();renderBJ(msg)}
+/* ========================= SHOP ========================= */
+function openShop(){
+  mini={type:"shop"};document.getElementById("minigame").style.display="flex";renderShop();
+}
+function renderShop(){
+  document.getElementById("miniContent").innerHTML=`
+  <div class="small">CASHIER // PERMANENT UPGRADES</div><h2 style="color:#18f0ff">HOUSE SERVICES</h2>
+  <div style="display:grid;gap:10px">
+  <button class="choice" id="luckBtn"><b>LUCKY CHARM</b> — 180¢ — raise payout multiplier (${state.luck.toFixed(2)}× → ${(state.luck+.15).toFixed(2)}×)</button>
+  <button class="choice" id="speedBtn"><b>NEON SOLES</b> — 140¢ — movement speed (${state.speed.toFixed(2)}× → ${(state.speed+.15).toFixed(2)}×)</button>
+  <button class="choice" id="vipBtn"><b>VIP CARD</b> — 500¢ — unlock high-stakes prestige access ${state.vip?"[OWNED]":""}</button>
+  <button class="bigbtn" id="closeShop">LEAVE CASHIER</button></div>`;
+  document.getElementById("luckBtn").onclick=()=>buy("luck",180);
+  document.getElementById("speedBtn").onclick=()=>buy("speed",140);
+  document.getElementById("vipBtn").onclick=()=>buy("vip",500);
+  document.getElementById("closeShop").onclick=closeMini;
+}
+function buy(kind,cost){
+  if(kind==="vip"&&state.vip){showToast("VIP ALREADY OWNED");return}
+  if(state.wallet<cost){showToast("NOT ENOUGH CREDITS");sfx("lose");return}
+  state.wallet-=cost;
+  if(kind==="luck")state.luck+=.15;
+  if(kind==="speed")state.speed+=.15;
+  if(kind==="vip")state.vip=true;
+  burst(175,650,"#18f0ff",22);sfx("coin");syncHUD();save();renderShop();
+  showToast(kind.toUpperCase()+" UPGRADE INSTALLED");
+}
+
+/* ========================= UI / PAUSE ========================= */
+function syncHUD(){
+  document.getElementById("wallet").textContent=Math.floor(state.wallet);
+  document.getElementById("zone").textContent=isCasino()?"VELVET CIRCUIT // CASINO FLOOR":"RAIN DISTRICT // OUTSIDE";
+  document.getElementById("upgradeText").textContent=`LUCK x${state.luck.toFixed(2)} · SPD ${state.speed.toFixed(2)}${state.vip?" · VIP":""}`;
+}
+function showToast(t){
+  const el=document.getElementById("toast");el.textContent=t;el.style.opacity=1;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.style.opacity=0,1800);
+}
+function closeMini(){document.getElementById("minigame").style.display="none";mini=null;bj=null;slotBusy=false}
+function openPause(){paused=true;document.getElementById("modal").style.display="flex";syncSettings();save()}
+function closePause(){paused=false;document.getElementById("modal").style.display="none";syncSettings()}
+function syncSettings(){
+  document.getElementById("volume").value=state.volume;
+  document.getElementById("crt").checked=state.crt;
+  document.getElementById("particles").checked=state.particles;
+  document.getElementById("scan").style.display=state.crt?"block":"none";
+  if(audio)audio.master.gain.value=state.volume;
+}
+document.getElementById("volume").oninput=e=>{state.volume=+e.target.value;syncSettings();save()};
+document.getElementById("crt").onchange=e=>{state.crt=e.target.checked;syncSettings();save()};
+document.getElementById("particles").onchange=e=>{state.particles=e.target.checked;save()};
+document.getElementById("saveBtn").onclick=save;
+document.getElementById("resetBtn").onclick=()=>{if(confirm("Reset local save?"))resetSave()};
+document.getElementById("resumeBtn").onclick=closePause;
+syncSettings();syncHUD();
+
+/* ========================= LOOP ========================= */
+let last=performance.now(),t=0;
+function loop(now){
+  const dt=Math.min(.033,(now-last)/1000);last=now;t+=dt;
+  updatePlayer(dt);
+  updateNPCs(dt);
+  updateFX(dt);
+  ctx.save();
+  const sx=shake?(Math.random()-.5)*shake:0,sy=shake?(Math.random()-.5)*shake:0;ctx.translate(sx,sy);
+  drawBackground(t);
+  ctx.save();ctx.translate(-camera.x,-camera.y);
+  drawActors();drawFX();ctx.restore();
+  // interaction prompt
+  const n=nearNPC();
+  if(!dialogue&&!mini&&!paused&&n)neonText("E  TALK",n.x-camera.x,n.y-camera.y-38,12,"#ffd35a","center");
+  if(isCasino()&&!mini&&!dialogue&&!paused){
+    if(dist(player.x,player.y,620,330)<125)neonText("E  PLAY SLOTS",620-camera.x,280-camera.y,12,"#ff2aa8","center");
+    if(dist(player.x,player.y,790,225)<155)neonText("E  PLAY BLACKJACK",790-camera.x,105-camera.y,12,"#ffd35a","center");
+    if(player.x<310&&player.y>560)neonText("E  CASHIER",175-camera.x,555-camera.y,12,"#18f0ff","center");
+  }
+  ctx.restore();
+  if(transition){ctx.fillStyle=`rgba(0,0,0,${Math.min(1,transition)})`;ctx.fillRect(0,0,W,H);transition-=dt*3.8}
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ========================= HELP / FIRST BOOT ========================= */
+setTimeout(()=>showToast("WASD / ARROWS MOVE  •  E INTERACT  •  ESC MENU"),500);
+</script>
+</body>
+</html>
